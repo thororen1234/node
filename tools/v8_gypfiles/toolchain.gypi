@@ -511,6 +511,9 @@
           'WIN32',
           'NOMINMAX',  # Refs: https://chromium-review.googlesource.com/c/v8/v8/+/1456620
           '_WIN32_WINNT=0x0A00',  # Windows 10
+          # Resolve EventSetInformation (Windows 8+) at runtime so the binary
+          # still loads on Windows 7.
+          'TLG_HAVE_EVENT_SET_INFORMATION=2',
           '_SILENCE_ALL_CXX20_DEPRECATION_WARNINGS',
         ],
         # 4351: VS 2005 and later are warning us that they've fixed a bug

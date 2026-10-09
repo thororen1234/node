@@ -51,6 +51,9 @@ uv_sGetHostNameW pGetHostNameW;
 /* api-ms-win-core-file-l2-1-4.dll function pointer */
 sGetFileInformationByName pGetFileInformationByName;
 
+/* kernel32.dll function pointer */
+uv_sGetSystemTimePreciseAsFileTime pGetSystemTimePreciseAsFileTime;
+
 void uv__winapi_init(void) {
   HMODULE ntdll_module;
   HMODULE powrprof_module;
@@ -58,6 +61,7 @@ void uv__winapi_init(void) {
   HMODULE ws2_32_module;
   HMODULE bcryptprimitives_module;
   HMODULE api_win_core_file_module;
+  HMODULE kernel32_module;
 
   union {
     FARPROC proc;
@@ -170,4 +174,12 @@ void uv__winapi_init(void) {
                             "GetFileInformationByName");
     pGetFileInformationByName = u.pGetFileInformationByName;
   }
+
+  kernel32_module = GetModuleHandleA("kernel32.dll");
+  if (kernel32_module != NULL) {
+    pGetSystemTimePreciseAsFileTime = (uv_sGetSystemTimePreciseAsFileTime)
+      GetProcAddress(kernel32_module, "GetSystemTimePreciseAsFileTime");
+  }
+  if (pGetSystemTimePreciseAsFileTime == NULL)
+    pGetSystemTimePreciseAsFileTime = GetSystemTimeAsFileTime;
 }
