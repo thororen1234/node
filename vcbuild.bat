@@ -38,6 +38,7 @@ set nobuild=
 set sign=
 set nosnapshot=
 set nonpm=
+set nocorepack=
 set cctest_args=
 set test_args=
 set stage_package=
@@ -108,6 +109,7 @@ if /i "%1"=="nosign"        set "sign="&echo Note: vcbuild no longer signs by de
 if /i "%1"=="sign"          set sign=1&goto arg-ok
 if /i "%1"=="nosnapshot"    set nosnapshot=1&goto arg-ok
 if /i "%1"=="nonpm"         set nonpm=1&goto arg-ok
+if /i "%1"=="nocorepack"    set nocorepack=1&goto arg-ok
 if /i "%1"=="ltcg"          set ltcg=1&goto arg-ok
 if /i "%1"=="thin-lto"      set thin_lto=1&goto arg-ok
 if /i "%1"=="lto"           set lto=1&goto arg-ok
@@ -242,6 +244,7 @@ if "%*"=="format-md" if exist "%node_exe%" goto lint-md-build
 if "%config%"=="Debug"      set configure_flags=%configure_flags% --debug
 if defined nosnapshot       set configure_flags=%configure_flags% --without-snapshot
 if defined nonpm            set configure_flags=%configure_flags% --without-npm
+if defined nocorepack       set configure_flags=%configure_flags% --without-corepack
 if defined ltcg             set configure_flags=%configure_flags% --with-ltcg
 if defined thin_lto         set configure_flags=%configure_flags% --enable-thin-lto
 if defined lto              set configure_flags=%configure_flags% --enable-lto
@@ -550,6 +553,15 @@ if not defined nonpm (
   if errorlevel 1 echo Cannot copy npm.ps1 && goto package_error
   copy /Y ..\deps\npm\bin\npx.ps1 %TARGET_NAME%\ > nul
   if errorlevel 1 echo Cannot copy npx.ps1 && goto package_error
+)
+
+if not defined nocorepack (
+  robocopy ..\deps\corepack %TARGET_NAME%\node_modules\corepack /e /xd test > nul
+  if errorlevel 8 echo Cannot copy corepack package && goto package_error
+  copy /Y ..\deps\corepack\shims\nodewin\corepack %TARGET_NAME%\ > nul
+  if errorlevel 1 echo Cannot copy corepack && goto package_error
+  copy /Y ..\deps\corepack\shims\nodewin\corepack.cmd %TARGET_NAME%\ > nul
+  if errorlevel 1 echo Cannot copy corepack.cmd && goto package_error
 )
 
 copy /Y ..\tools\msvs\nodevars.bat %TARGET_NAME%\ > nul
@@ -912,7 +924,7 @@ set exit_code=1
 goto exit
 
 :help
-echo vcbuild.bat [debug/release] [msi] [doc] [test/test-all/test-addons/test-doc/test-js-native-api/test-node-api/test-internet/test-tick-processor/test-known-issues/test-node-inspect/test-check-deopts/test-npm/test-v8/test-v8-intl/test-v8-benchmarks/test-v8-all] [build-addons/build-js-native-api-tests/build-node-api-tests/build-ffi-tests] [ignore-flaky] [static/dll] [noprojgen] [projgen] [clang-cl] [ccache path-to-ccache] [small-icu/full-icu/without-intl] [nobuild] [nosnapshot] [nonpm] [ltcg] [thin-lto] [lto] [lto-jobs number-of-jobs] [pgo-generate] [pgo-use] [licensetf] [sign] [x64/arm64] [vs2022/vs2026] [download-all] [enable-vtune] [lint/lint-ci/lint-js/lint-md] [lint-md-build] [format-md] [package] [build-release] [upload] [no-NODE-OPTIONS] [link-module path-to-module] [debug-http2] [debug-nghttp2] [clean] [cctest] [no-cctest] [openssl-no-asm]
+echo vcbuild.bat [debug/release] [msi] [doc] [test/test-all/test-addons/test-doc/test-js-native-api/test-node-api/test-internet/test-tick-processor/test-known-issues/test-node-inspect/test-check-deopts/test-npm/test-v8/test-v8-intl/test-v8-benchmarks/test-v8-all] [build-addons/build-js-native-api-tests/build-node-api-tests/build-ffi-tests] [ignore-flaky] [static/dll] [noprojgen] [projgen] [clang-cl] [ccache path-to-ccache] [small-icu/full-icu/without-intl] [nobuild] [nosnapshot] [nonpm] [nocorepack] [ltcg] [thin-lto] [lto] [lto-jobs number-of-jobs] [pgo-generate] [pgo-use] [licensetf] [sign] [x64/arm64] [vs2022/vs2026] [download-all] [enable-vtune] [lint/lint-ci/lint-js/lint-md] [lint-md-build] [format-md] [package] [build-release] [upload] [no-NODE-OPTIONS] [link-module path-to-module] [debug-http2] [debug-nghttp2] [clean] [cctest] [no-cctest] [openssl-no-asm]
 echo Examples:
 echo   vcbuild.bat                          : builds release build
 echo   vcbuild.bat debug                    : builds debug build
