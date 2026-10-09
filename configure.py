@@ -1300,6 +1300,16 @@ parser.add_argument('--v8-enable-temporal-support',
     default=None,
     help='Enable Temporal support in V8.')
 
+parser.add_argument('--rust-win7-target',
+    action='store_true',
+    dest='rust_win7_target',
+    default=None,
+    help='Build the Rust crates (Temporal) for x86_64-win7-windows-msvc so the '
+         'binary loads on Windows 7/8/8.1. The standard Rust target imports '
+         'Windows 10 APIs. Requires a nightly toolchain with rust-src '
+         '(RUSTUP_TOOLCHAIN, default nightly) and network access for std '
+         'dependencies.')
+
 parser.add_argument('--node-builtin-modules-path',
     action='store',
     dest='node_builtin_modules_path',
@@ -1954,9 +1964,15 @@ def configure_node(o):
   # but Node.js requires MSVC-compatible libraries. Set explicit Rust target
   # triple for the target architecture.
   o['variables']['cargo_rust_target'] = ''
+  o['variables']['cargo_build_std'] = 'false'
   if flavor == 'win':
     o['variables']['cargo_rust_target'] = \
       'aarch64-pc-windows-msvc' if target_arch == 'arm64' else 'x86_64-pc-windows-msvc'
+    if options.rust_win7_target:
+      if target_arch != 'x64':
+        error('--rust-win7-target is only supported for x64')
+      o['variables']['cargo_rust_target'] = 'x86_64-win7-windows-msvc'
+      o['variables']['cargo_build_std'] = 'true'
   # Always set the Rust target for x64 macOS in case we will be building
   # under Rosetta 2.
   if flavor == 'mac' and target_arch == 'x64':
@@ -2496,10 +2512,12 @@ def configure_macos(o):
     for path in ('include/c++/v1', 'lib/libc++.a', 'lib/libc++abi.a'):
       if not os.path.exists(os.path.join(libcxx, path)):
         error(f'--macos-static-libcxx: {os.path.join(libcxx, path)} not found')
-  elif Version(min_version) < Version('10.15'):
+  elif Version(min_version) < Version('13.3'):
+    # std::filesystem needs macOS 10.15, and V8 formats doubles with
+    # std::format, whose floating-point support needs macOS 13.3.
     warn(f'Targeting macOS {min_version} with the system libc++ will fail to '
-         'link or run: std::filesystem requires macOS 10.15. '
-         'Pass --macos-static-libcxx=<llvm libc++ prefix>.')
+         'compile or run: V8 needs std::format floating-point support from '
+         'macOS 13.3. Pass --macos-static-libcxx=<llvm libc++ prefix>.')
   o['variables']['macos_static_libcxx'] = libcxx or ''
 
 def configure_static(o):

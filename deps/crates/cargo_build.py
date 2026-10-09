@@ -39,12 +39,46 @@ def main():
         'arm64': 'aarch64-pc-windows-msvc',
     }
     rust_target = rust_target_map.get(platform)
+
+    # An explicit --target (e.g. x86_64-win7-windows-msvc) overrides the map.
+    args = []
+    i = 0
+    while i < len(cargo_args):
+        if cargo_args[i] == '--target' and i + 1 < len(cargo_args):
+            rust_target = cargo_args[i + 1]
+            i += 2
+            continue
+        if cargo_args[i].startswith('--target='):
+            rust_target = cargo_args[i][len('--target='):]
+            i += 1
+            continue
+        args.append(cargo_args[i])
+        i += 1
     if rust_target is None:
         print(f'Unsupported platform: {platform}', file=sys.stderr)
         sys.exit(1)
 
-    cmd = [cargo, 'rustc', '--target', rust_target, '--target-dir', output_dir] + cargo_args
-    ret = subprocess.call(cmd)
+    cwd = None
+    env = None
+    if any(arg.startswith('-Zbuild-std') for arg in args):
+        # Tier 3 targets such as x86_64-win7-windows-msvc ship no prebuilt std,
+        # so std is rebuilt with a nightly toolchain. std's own dependencies
+        # are not vendored, so build a copy of this crate outside the reach of
+        # .cargo/config.toml (which replaces crates.io with ./vendor) and let
+        # cargo fetch them; Cargo.lock still pins every Node.js dependency.
+        args = [arg for arg in args if arg != '--frozen']
+        env = dict(os.environ)
+        env.setdefault('RUSTUP_TOOLCHAIN', 'nightly')
+        here = os.path.dirname(os.path.abspath(__file__))
+        cwd = os.path.join(output_dir, 'node_crates_build_std')
+        shutil.rmtree(cwd, ignore_errors=True)
+        os.makedirs(cwd)
+        for name in ('Cargo.toml', 'Cargo.lock'):
+            shutil.copy2(os.path.join(here, name), cwd)
+        shutil.copytree(os.path.join(here, 'src'), os.path.join(cwd, 'src'))
+
+    cmd = [cargo, 'rustc', '--target', rust_target, '--target-dir', output_dir] + args
+    ret = subprocess.call(cmd, cwd=cwd, env=env)
     if ret != 0:
         sys.exit(ret)
 

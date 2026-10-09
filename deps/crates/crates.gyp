@@ -6,8 +6,21 @@
     'zoneinfo64_dir': 'zoneinfo64-v0_3',
     'temporal_zoneinfo64_data_output': '<(SHARED_INTERMEDIATE_DIR)/src/builtins/builtins-temporal-zoneinfo64-data.cc',
     'cargo_rust_target%': '',
+    'cargo_build_std%': 'false',
+    'cargo_build_std_flags': [],
   },
   'conditions': [
+    # Tier 3 Rust targets (e.g. x86_64-win7-windows-msvc) need std rebuilt.
+    ['cargo_build_std=="true"', {
+      'variables': {
+        # A single --target=<triple> argument: gyp drops list items that
+        # duplicate ones already present, which would orphan a bare --target.
+        'cargo_build_std_flags': [
+          '-Zbuild-std=std,panic_abort',
+          '--target=<(cargo_rust_target)',
+        ],
+      },
+    }],
     ['build_type == "Release"', {
       'variables': {
         'cargo_build_flags': ['--release'],
@@ -86,6 +99,7 @@
                 '$(Platform)',
                 '<(SHARED_INTERMEDIATE_DIR)',
                 '<@(cargo_build_flags)',
+                '<@(cargo_build_std_flags)',
                 '--frozen',
               ],
             }
