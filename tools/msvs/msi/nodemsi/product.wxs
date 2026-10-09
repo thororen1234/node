@@ -19,7 +19,7 @@
            InstallerVersion="200"
            Compressed="yes">
 
-    <Launch Condition="Installed OR (VersionNT &gt;= 603) OR (VersionNT &gt;= 602 AND MsiNTProductType &lt;&gt; 1)" Message="This application is only supported on Windows 8.1, Windows Server 2012 R2, or higher." />
+    <Launch Condition="Installed OR (VersionNT &gt; 601) OR (VersionNT = 601 AND ServicePackLevel &gt;= 1)" Message="This application is only supported on Windows 7 SP1, Windows Server 2008 R2 SP1, or higher." />
 
     <Media Id="1" Cabinet="media1.cab" EmbedCab="yes"/>
 

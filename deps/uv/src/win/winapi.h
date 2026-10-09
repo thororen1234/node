@@ -4840,4 +4840,10 @@ typedef int (WINAPI *uv_sGetHostNameW)
              int);
 extern uv_sGetHostNameW pGetHostNameW;
 
+/* kernel32.dll function pointer. GetSystemTimePreciseAsFileTime() requires
+ * Windows 8; on Windows 7 this points at GetSystemTimeAsFileTime(). */
+typedef VOID (WINAPI *uv_sGetSystemTimePreciseAsFileTime)
+             (LPFILETIME);
+extern uv_sGetSystemTimePreciseAsFileTime pGetSystemTimePreciseAsFileTime;
+
 #endif /* UV_WIN_WINAPI_H_ */
