@@ -186,6 +186,22 @@ parser.add_argument("--partly-static",
     help="Generate an executable with libgcc and libstdc++ libraries. This "
          "will not work on macOS when using the default compilation environment")
 
+parser.add_argument("--macos-min-version",
+    action="store",
+    dest="macos_min_version",
+    default=None,
+    help="Minimum macOS version to target (MACOSX_DEPLOYMENT_TARGET). "
+         "Defaults to 10.13 for x64 and 11.0 for arm64")
+
+parser.add_argument("--macos-static-libcxx",
+    action="store",
+    dest="macos_static_libcxx",
+    default=None,
+    help="Path to an LLVM libc++ install prefix (containing include/c++/v1, "
+         "lib/libc++.a and lib/libc++abi.a) to link statically on macOS. "
+         "Required when targeting macOS < 10.15, whose system libc++ lacks "
+         "std::filesystem")
+
 parser.add_argument("--enable-vtune-profiling",
     action="store_true",
     dest="enable_vtune_profiling",
@@ -1853,6 +1869,27 @@ def configure_sqlite(o):
 
   configure_library('sqlite', o, pkgname='sqlite3')
 
+def configure_macos(o):
+  if flavor != 'mac':
+    return
+
+  min_version = options.macos_min_version
+  if min_version is None:
+    min_version = '11.0' if o['variables']['target_arch'] == 'arm64' else '10.13'
+  o['variables']['macos_min_version'] = min_version
+
+  libcxx = options.macos_static_libcxx
+  if libcxx:
+    libcxx = os.path.abspath(libcxx)
+    for path in ('include/c++/v1', 'lib/libc++.a', 'lib/libc++abi.a'):
+      if not os.path.exists(os.path.join(libcxx, path)):
+        error(f'--macos-static-libcxx: {os.path.join(libcxx, path)} not found')
+  elif Version(min_version) < Version('10.15'):
+    warn(f'Targeting macOS {min_version} with the system libc++ will fail to '
+         'link or run: std::filesystem requires macOS 10.15. '
+         'Pass --macos-static-libcxx=<llvm libc++ prefix>.')
+  o['variables']['macos_static_libcxx'] = libcxx or ''
+
 def configure_static(o):
   if options.fully_static or options.partly_static:
     if flavor == 'mac':
@@ -2302,6 +2339,7 @@ configure_v8(output, configurations)
 configure_openssl(output)
 configure_intl(output)
 configure_static(output)
+configure_macos(output)
 configure_inspector(output)
 configure_section_file(output)
 

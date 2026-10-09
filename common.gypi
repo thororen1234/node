@@ -26,6 +26,8 @@
     'uv_library%': 'static_library',
 
     'clang%': 0,
+    'macos_min_version%': '11.0',
+    'macos_static_libcxx%': '',
     'error_on_warn%': 'false',
     'suppress_all_error_on_warn%': 'false',
     'control_flow_guard%': 'false',
@@ -655,7 +657,7 @@
           'GCC_ENABLE_PASCAL_STRINGS': 'NO',        # No -mpascal-strings
           'GCC_STRICT_ALIASING': 'NO',              # -fno-strict-aliasing
           'PREBINDING': 'NO',                       # No -Wl,-prebind
-          'MACOSX_DEPLOYMENT_TARGET': '11.0',       # -mmacosx-version-min=11.0
+          'MACOSX_DEPLOYMENT_TARGET': '<(macos_min_version)',  # -mmacosx-version-min
           'USE_HEADERMAP': 'NO',
           'WARNING_CFLAGS': [
             '-Wall',
@@ -694,6 +696,29 @@
               'CLANG_CXX_LANGUAGE_STANDARD': 'gnu++17',  # -std=gnu++17
               'CLANG_CXX_LIBRARY': 'libc++',
             },
+          }],
+          # The system libc++ on macOS < 10.15 lacks std::filesystem and other
+          # symbols Node.js needs, so link an LLVM libc++ built for the
+          # deployment target statically instead.
+          ['macos_static_libcxx!=""', {
+            'xcode_settings': {
+              'OTHER_CPLUSPLUSFLAGS': [
+                '$(inherited)',
+                '-nostdinc++',
+                '-isystem', '<(macos_static_libcxx)/include/c++/v1',
+              ],
+            },
+            'target_conditions': [
+              ['_type!="static_library"', {
+                'xcode_settings': {
+                  'OTHER_LDFLAGS': [
+                    '-nostdlib++',
+                    '<(macos_static_libcxx)/lib/libc++.a',
+                    '<(macos_static_libcxx)/lib/libc++abi.a',
+                  ],
+                },
+              }],
+            ],
           }],
         ],
       }],

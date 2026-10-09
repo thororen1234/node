@@ -48,12 +48,16 @@ uv_sGetHostNameW pGetHostNameW;
 /* api-ms-win-core-file-l2-1-4.dll function pointer */
 sGetFileInformationByName pGetFileInformationByName;
 
+/* kernel32.dll function pointer */
+uv_sGetSystemTimePreciseAsFileTime pGetSystemTimePreciseAsFileTime;
+
 void uv__winapi_init(void) {
   HMODULE ntdll_module;
   HMODULE powrprof_module;
   HMODULE user32_module;
   HMODULE ws2_32_module;
   HMODULE api_win_core_file_module;
+  HMODULE kernel32_module;
 
   ntdll_module = GetModuleHandleA("ntdll.dll");
   if (ntdll_module == NULL) {
@@ -141,4 +145,12 @@ void uv__winapi_init(void) {
     pGetFileInformationByName = (sGetFileInformationByName)GetProcAddress(
         api_win_core_file_module, "GetFileInformationByName");
   }
+
+  kernel32_module = GetModuleHandleA("kernel32.dll");
+  if (kernel32_module != NULL) {
+    pGetSystemTimePreciseAsFileTime = (uv_sGetSystemTimePreciseAsFileTime)
+      GetProcAddress(kernel32_module, "GetSystemTimePreciseAsFileTime");
+  }
+  if (pGetSystemTimePreciseAsFileTime == NULL)
+    pGetSystemTimePreciseAsFileTime = GetSystemTimeAsFileTime;
 }

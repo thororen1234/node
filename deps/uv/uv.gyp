@@ -195,7 +195,7 @@
       'conditions': [
         [ 'OS=="win"', {
           'defines': [
-            '_WIN32_WINNT=0x0602',
+            '_WIN32_WINNT=0x0601',
             '_GNU_SOURCE',
           ],
           'sources': [
