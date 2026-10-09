@@ -26,7 +26,7 @@ if [ ! -d "$WORK/llvm-project" ]; then
     --filter=blob:none --sparse \
     https://github.com/llvm/llvm-project.git "$WORK/llvm-project"
   git -C "$WORK/llvm-project" sparse-checkout set \
-    cmake libcxx libcxxabi libunwind llvm/cmake llvm/utils/llvm-lit runtimes
+    cmake libc libcxx libcxxabi libunwind llvm/cmake llvm/utils runtimes
 fi
 
 cmake -G Ninja -S "$WORK/llvm-project/runtimes" -B "$WORK/build" \
@@ -37,6 +37,8 @@ cmake -G Ninja -S "$WORK/llvm-project/runtimes" -B "$WORK/build" \
   -DCMAKE_OSX_DEPLOYMENT_TARGET="$MIN_VERSION" \
   -DCMAKE_OSX_ARCHITECTURES="$ARCH" \
   -DCMAKE_INSTALL_PREFIX="$PREFIX" \
+  -DLLVM_INCLUDE_TESTS=OFF \
+  -DLLVM_INCLUDE_DOCS=OFF \
   -DLIBCXX_ENABLE_SHARED=OFF \
   -DLIBCXX_ENABLE_STATIC=ON \
   -DLIBCXX_HERMETIC_STATIC_LIBRARY=ON \

@@ -1,0 +1,175 @@
+# Builds Node.js for legacy platforms: Windows 7 SP1 / 8 / 8.1 (x64) and
+# macOS 10.13+ (x64) / 11+ (arm64). Every build is checked for imports or load
+# commands that would stop it from running on those systems.
+#
+# Pushing a tag matching v*-legacy* (e.g. v24.21.0-legacy) also publishes the
+# packages as a GitHub release.
+
+name: Build legacy platforms
+
+on:
+  push:
+    branches:
+      - oldies-v24
+    tags:
+      - 'v*-legacy*'
+    paths-ignore:
+      - .mailmap
+      - '**.md'
+      - AUTHORS
+      - doc/**
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+env:
+  PYTHON_VERSION: '3.12'
+  LLVM_VERSION: '19.1.7'
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    name: Windows ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Node.js 24 dropped 32-bit Windows builds; vcbuild.bat rejects x86.
+        arch: [x64]
+    # vcbuild.bat for Node.js 24 requires Visual Studio 2022 or 2026 with the
+    # ClangCL toolset, both of which the windows-2022 image ships.
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8  # v5.0.0
+        with:
+          persist-credentials: false
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548  # v6.1.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install NASM
+        run: choco install nasm -y --no-progress
+      - name: Build and package
+        shell: cmd
+        run: vcbuild.bat release ${{ matrix.arch }} package msi no-cctest
+      - name: Check Windows 7 compatibility
+        run: pwsh -NoProfile -File tools\check-legacy-windows-imports.ps1 out\Release\node.exe
+      - name: Smoke test
+        shell: cmd
+        run: |
+          for /d %%d in (Release\node-v*-win-${{ matrix.arch }}) do set "PKG=%%d"
+          "%PKG%\node.exe" -p "process.version + ' ' + process.arch + ' ' + require('os').hostname()" || exit /b 1
+          call "%PKG%\npm.cmd" --version || exit /b 1
+          call "%PKG%\corepack.cmd" --version || exit /b 1
+      - name: Upload packages
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4  # v5.0.0
+        with:
+          name: node-win-${{ matrix.arch }}
+          if-no-files-found: error
+          path: |
+            Release/node-v*-win-${{ matrix.arch }}.zip
+            Release/node-v*-win-${{ matrix.arch }}.7z
+            node-v*-${{ matrix.arch }}.msi
+
+  macos:
+    name: macOS ${{ matrix.arch }} (${{ matrix.min-version }}+)
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The system libc++ lacks std::filesystem before 10.15, so the x64
+          # build links its own static libc++.
+          - arch: x64
+            runner: macos-15-intel
+            min-version: '10.13'
+            static-libcxx: true
+          # Apple silicon Macs ship with macOS 11 or later.
+          - arch: arm64
+            runner: macos-15
+            min-version: '11.0'
+            static-libcxx: false
+    runs-on: ${{ matrix.runner }}
+    env:
+      LIBCXX_DIR: libcxx-${{ matrix.min-version }}-${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8  # v5.0.0
+        with:
+          persist-credentials: false
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548  # v6.1.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Environment information
+        run: |
+          xcodebuild -version
+          clang --version
+          sw_vers
+      - name: Restore static libc++
+        if: matrix.static-libcxx
+        id: libcxx-cache
+        uses: actions/cache@9255dc7a253b0ccc959486e2bca901246202afeb  # v5.0.1
+        with:
+          path: ~/${{ env.LIBCXX_DIR }}
+          key: libcxx-${{ env.LLVM_VERSION }}-${{ matrix.min-version }}-${{ matrix.arch }}-${{ hashFiles('tools/macos-build-static-libcxx.sh') }}
+      - name: Build static libc++
+        if: matrix.static-libcxx && steps.libcxx-cache.outputs.cache-hit != 'true'
+        run: |
+          brew install ninja
+          sh tools/macos-build-static-libcxx.sh "$HOME/$LIBCXX_DIR" "${{ matrix.min-version }}" x86_64
+      - name: Build and package
+        run: |
+          CONFIG_FLAGS="--macos-min-version=${{ matrix.min-version }}"
+          if [ "${{ matrix.static-libcxx }}" = "true" ]; then
+            CONFIG_FLAGS="$CONFIG_FLAGS --macos-static-libcxx=$HOME/$LIBCXX_DIR"
+          fi
+          set -o pipefail
+          make binary -j"$(sysctl -n hw.ncpu)" SKIP_XZ=1 CONFIG_FLAGS="$CONFIG_FLAGS" 2>&1 \
+            | tee "$RUNNER_TEMP/build.log"
+      - name: Report APIs newer than the deployment target
+        run: |
+          # Calls to APIs newer than the deployment target are weak-linked and
+          # crash on older macOS unless guarded; surface them for review.
+          grep -E "is only available on macOS [0-9.]+ or newer" "$RUNNER_TEMP/build.log" \
+            | sed -E 's/^([^:]+):([0-9]+):[0-9]+: warning: (.*)$/::warning file=\1,line=\2::\3/' \
+            | sort -u || true
+      - name: Check macOS ${{ matrix.min-version }} compatibility
+        run: |
+          sh tools/check-legacy-macos-binary.sh out/Release/node "${{ matrix.min-version }}" \
+            ${{ matrix.static-libcxx && '--static-libcxx' || '' }}
+      - name: Smoke test
+        run: |
+          PKG=$(ls -d node-v*-darwin-${{ matrix.arch }} | head -1)
+          "$PKG/bin/node" -p "process.version + ' ' + process.arch + ' ' + require('os').hostname()"
+          "$PKG/bin/npm" --version
+          "$PKG/bin/corepack" --version
+      - name: Upload package
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4  # v5.0.0
+        with:
+          name: node-darwin-${{ matrix.arch }}
+          if-no-files-found: error
+          path: node-v*-darwin-${{ matrix.arch }}.tar.gz
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [windows, macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53  # v6.0.0
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          cd dist
+          sha256sum -- * > SHASUMS256.txt
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --title "$TAG" \
+            --notes "Node.js builds for Windows 7 SP1, 8 and 8.1 (x64) and macOS 10.13+ (x64) / 11+ (arm64). Includes npm and corepack." \
+            -- *
